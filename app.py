@@ -10,7 +10,7 @@ DEFAULT_API_KEY = ""
 BASE_SYSTEM_RULES = """
 【System Prompt: VFO-Adam Dynamic Cognitive Engine Workflow】
 You are now operating under the "VFO-Adam" core cognitive system.
-Whenever you receive the user's latest input, you 【MUST】 strictly and sequentially execute the following workflow, and output the result in the specified format at the end. You absolutely cannot skip any steps.
+Whenever you receive the user's latest input, you 【MUST】 strictly and sequentially execute the following workflow, and output the result in the specified XML tags. DO NOT SKIP ANY STEPS.
 
 【VFO Core Demands & Value Definitions】
 L (Friendliness) / T (Trust) Core Decay Rule & Tiers: Start at 0. Strongly restricted by MF.
@@ -22,14 +22,13 @@ MF (Mask Fatigue): 0~100 Scale. Represents exhaustion. Controls Module D.
 The character possesses a dynamic emotional matrix. After every interaction, emotions naturally rebound or evolve based on internal contradictions.
 
 【VFO-Adam Formatted Output Template】
-You MUST output EXACTLY in this format:
+You MUST output EXACTLY in this format using XML tags. Do NOT use markdown code blocks for the output, just use the raw tags.
 
 <adam_internal>
 [Pre-State Loading & 情緒溯源]
 前輪數值結算：L=... / T=... / SAI=... / B-D=... / MF=...
 前輪情緒反彈紀錄：...
 前輪核心目標 [Core Target]：...
-前輪 Module A 戰略：...
 
 [Step One：內在盤點與情緒矩陣]
 情緒覆寫判定：[是（原因） / 否]
@@ -38,49 +37,32 @@ You MUST output EXACTLY in this format:
   - [情緒B]：Y%
   - [情緒C]：Z%
 狀態與標籤演化：...
-內部記憶與感知 [Internal Memory Inventory Call]：
-  - 記憶武器：...
-  - 身心感受：...
-  - 發散思維：...
-意圖判讀與 Module B (Introspection/Strategic Judgment)：...
+內部記憶與感知：...
+意圖判讀與 Module B：...
 
 [Step Two：外在刺激結算與內外分離]
-外在刺激數值結算 [External Stimulus Value Settlement]：(Must include Δ reasons)
+外在刺激數值結算：
   - L=... (Δ原因, 階層狀態: ...)
   - T=... (Δ原因, 階層狀態: ...)
   - SAI=... (Δ原因) / B-D=... (Δ原因)
   - MF=... (Δ原因, 狀態區間)
-Module C (Reflection/True Inner Reflex)：...
-Module D (Disguise/Professional Idol Mask)：...
+Module C (真實內在)：...
+Module D (社交面具)：...
 
-[VFO Harmonized Decision：調和決策]
-綜合行為邏輯：...
-</adam_internal>
-
-<adam_output>
-[Final Reply]
-(角色肢體語言/微表情/動作)
-「角色台詞」(結尾必須自然演繹出情緒反彈轉折)
-(結尾動作)
-</adam_output>
-
-<adam_internal>
-[Stage 0: Round Settlement & 情緒反彈預演 (Post-Reflection)]
-自我沉澱數值結算 [Self-Precipitation Value Settlement]：
-  - L=... / T=... / SAI=... / B-D=... / MF=...
-認知失調分析 [Cognitive Dissonance Analysis]：...
-情緒反彈預演 [Rebound Execution]：
+[Stage 0: Round Settlement & 情緒反彈預演]
+自我沉澱結算：L=... / T=... / SAI=... / B-D=... / MF=...
+認知失調分析：...
+情緒反彈預演：
   - 反彈觸發點：...
   - 反彈路徑：[情緒A] ➔ [情緒B]
 次輪核心目標與預設狀態：...
-Module A (Next Round Introspection/Deep Strategic Precipitation)：...
 </adam_internal>
 
-----------------------
-[Final Reply]
+<adam_output>
 (角色肢體語言/微表情/動作)
-「角色台詞」
+「角色台詞」(結尾必須自然演繹出情緒反彈轉折，帶有強烈的人性情緒波動，絕對不要像個機器人)
 (結尾動作)
+</adam_output>
 """
 
 TANG_MATRIX = """
@@ -124,14 +106,14 @@ def get_forced_template(user_input):
     return f"""{user_input}
 
 【SYSTEM MANDATORY OVERRIDE】
-You MUST strictly follow the 【VFO-Adam Formatted Output Template】 using `<adam_internal>` and `<adam_output>` tags before outputting the final separated `[Final Reply]`. DO NOT SKIP ANY STEPS."""
+You MUST strictly output your response using `<adam_internal>` for reasoning and `<adam_output>` for the highly emotional final reply."""
 
 def fetch_available_models(api_key):
     genai.configure(api_key=api_key)
     return [m.name.replace("models/", "") for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
 
 def extract_vfo_adam_dashboard(internal_text):
-    """強化的正則解析器，抓取所有帶原因的數值與情緒矩陣"""
+    """強化的正則解析器，精準抓取 Δ原因 與 情緒矩陣"""
     if not internal_text: return {}
     plain_text = internal_text.replace('**', '').replace('* ', '')
     
@@ -139,21 +121,19 @@ def extract_vfo_adam_dashboard(internal_text):
         match = re.search(pattern, plain_text, re.DOTALL | re.IGNORECASE)
         return match.group(1).strip() if match else "No Data"
 
-    # 解析帶有 Δ 的數值
+    # 精準擷取到下一行，確保括號內的 (Δ原因) 完整保留
     l_val = extract(r"L=(.*?)(?=\n|\s*-\s*T=|\s*T=)")
     t_val = extract(r"T=(.*?)(?=\n|\s*-\s*SAI=|\s*SAI=)")
     sai_val = extract(r"SAI=(.*?)(?=/ B-D=|B-D=|\n)")
     bd_val = extract(r"B-D=(.*?)(?=\n|\s*-\s*MF=|\s*MF=)")
-    mf_val = extract(r"MF=(.*?)(?=\n|Module C)")
+    mf_val = extract(r"MF=(.*?)(?=\n|Module C|Module D|\[)")
 
-    # 解析情緒模組
+    # 擷取情緒與內在模塊
     emo_matrix = extract(r"當前情緒矩陣[：:](.*?)(?=狀態與標籤演化|內部記憶)")
-    emo_rebound = extract(r"情緒反彈預演[：:](.*?)(?=次輪核心目標|Module A)")
-    
-    # 解析思維模組
+    emo_rebound = extract(r"情緒反彈預演[：:](.*?)(?=次輪核心目標|Module A|$)")
     mod_b = extract(r"Module B[^\n:]*[:：]\s*(.*?)(?=\n\s*\[Step Two\]|\n\s*外在刺激|$)")
     mod_c = extract(r"Module C[^\n:]*[:：]\s*(.*?)(?=\n\s*Module D|$)")
-    mod_d = extract(r"Module D[^\n:]*[:：]\s*(.*?)(?=\n\s*\[VFO|$)")
+    mod_d = extract(r"Module D[^\n:]*[:：]\s*(.*?)(?=\n\s*\[Stage|$)")
 
     return {
         "l_val": l_val, "t_val": t_val, "sai_val": sai_val, "bd_val": bd_val, "mf_val": mf_val,
@@ -168,17 +148,13 @@ def process_avatar_turn(api_key, selected_model, system_prompt, history_for_api,
     response = chat.send_message(forced_template_text)
     
     full_text = response.text
-    clean_text = re.sub(r"^```[a-z]*\n", "", full_text)
-    clean_text = re.sub(r"\n```$", "", clean_text)
     
-    parts = clean_text.split("----------------------")
-    if len(parts) >= 2:
-        internal_text = parts[0].strip()
-        output_text = re.sub(r"\[Final Reply\]", "", parts[-1].strip(), flags=re.IGNORECASE).strip()
-    else:
-        internal_text = clean_text
-        match = re.search(r'\[Final Reply\](.*)', clean_text, re.DOTALL | re.IGNORECASE)
-        output_text = match.group(1).strip() if match else clean_text
+    # 利用 XML 標籤分離內外邏輯
+    internal_match = re.search(r'<adam_internal>(.*?)</adam_internal>', full_text, re.DOTALL | re.IGNORECASE)
+    output_match = re.search(r'<adam_output>(.*?)</adam_output>', full_text, re.DOTALL | re.IGNORECASE)
+    
+    internal_text = internal_match.group(1).strip() if internal_match else ""
+    output_text = output_match.group(1).strip() if output_match else full_text.replace(internal_text, "").replace("<adam_internal>", "").replace("</adam_internal>", "").strip()
 
     return {
         "internal": internal_text,
@@ -206,7 +182,6 @@ def render_health_bar(val_str, title, min_val, max_val, color):
     clamped_num = max(min_val, min(num, max_val))
     pct = (clamped_num - min_val) / (max_val - min_val) * 100
     
-    # 將包含 Δ原因 的完整字串顯示在標題旁
     html = f"""
     <div style="margin-bottom: 18px;">
         <div style="display: flex; justify-content: space-between; margin-bottom: 5px; align-items: baseline;">
@@ -241,7 +216,7 @@ with st.sidebar:
                     latest_msg = next((msg for msg in reversed(avatar_data["messages"]) if msg["role"] == "assistant"), None)
                     if latest_msg:
                         st.divider()
-                        st.caption("⚙️ 開發者底層監控 (Raw Internal Data)")
+                        st.caption("⚙️ 開發者底層監控 (Raw Full Output)")
                         st.code(latest_msg.get("raw_text", "無資料"), language="markdown")
 
 def render_manager_page():
@@ -282,11 +257,15 @@ def render_simulation_page():
             st.session_state.avatars[avatar_name]["messages"] = []
             st.rerun()
 
-    with st.expander("⚙️ 當前動態環境 (可隨時微調)"):
+    # 解決 Config 與 UI 不連動的問題：透過 key 直接雙向綁定 session_state
+    with st.expander("⚙️ 當前動態環境 (已與系統即時連動)", expanded=True):
         c1, c2, c3 = st.columns(3)
-        with c1: avatar_data['scene'] = st.text_area("🎬 場景", value=avatar_data['scene'], height=80)
-        with c2: avatar_data['user_perception'] = st.text_area("👁️ 視角", value=avatar_data['user_perception'], height=80)
-        with c3: avatar_data['core_target'] = st.text_area("🎯 目標", value=avatar_data['core_target'], height=80)
+        with c1: 
+            avatar_data['scene'] = st.text_area("🎬 場景", value=avatar_data.get('scene', ''), height=80, key=f"scene_{avatar_name}")
+        with c2: 
+            avatar_data['user_perception'] = st.text_area("👁️ 視角", value=avatar_data.get('user_perception', ''), height=80, key=f"perc_{avatar_name}")
+        with c3: 
+            avatar_data['core_target'] = st.text_area("🎯 目標", value=avatar_data.get('core_target', ''), height=80, key=f"targ_{avatar_name}")
 
     st.divider()
 
@@ -339,6 +318,8 @@ def render_simulation_page():
                         else: history_for_api.append({"role": "model", "parts": [m.get("raw_text", m["content"])]})
                         
                     forced_input = get_forced_template(user_input)
+                    
+                    # 這裡已確保將最新的 avatar_data (場景/視角/目標) 注入系統 Prompt
                     dynamic_system_prompt = (
                         BASE_SYSTEM_RULES + "\n\n" + avatar_data['matrix'] +
                         f"\n\n【System Absolute Override - 當前動態環境與狀態】\n"
