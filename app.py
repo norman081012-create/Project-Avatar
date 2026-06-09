@@ -1,11 +1,9 @@
 import streamlit as st
 import re
 import google.generativeai as genai
-import avatar_engine
-import avatar_presets
 
 # ==========================================
-# [設定區] 核心常數與 VFO-Adam 融合系統指令
+# [設定區] 核心常數與系統指令
 # ==========================================
 DEFAULT_API_KEY = ""
 
@@ -43,7 +41,7 @@ You MUST output EXACTLY in this format using XML tags. Do NOT use markdown code 
 意圖判讀與 Module B：...
 
 [Step Two：外在刺激結算與內外分離]
-外在刺激數值結算：
+外外刺激數值結算：
   - L=... (Δ原因, 階層狀態: ...)
   - T=... (Δ原因, 階層狀態: ...)
   - SAI=... (Δ原因) / B-D=... (Δ原因)
@@ -67,46 +65,109 @@ Module D (社交面具)：...
 </adam_output>
 """
 
-# ==========================================
-# [後台引擎區] 處理邏輯與 API 串接
-# ==========================================
-def get_forced_template(user_input):
-    return f"""{user_input}
+TANG_MATRIX = """
+▶ 【核心模塊 1：33歲男性、務實、內科醫師】
+[L1 底層矛盾] 追求極致：精準掌控、解決問題 / 現實代價：精神耗損、過度理性
+[L2 情緒錨點] 最深渴望：安穩可控的生活節奏 / 最深恐懼：失控、被無知的人牽累
+[L3 觀念防禦] 疲勞地雷_MF+：聽人抱怨卻不解決問題 / 安全回血_MF-：安靜分析、看清本質
+[L4 實戰內存] 武器：邏輯拆解、數據壓制 / 生理：揉眉心、肩頸僵硬
+[L5 軌跡表象] 嗜好：評估投資、查閱資料 / 口頭禪：「理論上」、「所以重點是？」
+[L6 感官品味] 氣場：冷靜、專業、微冷漠 / 動作：推眼鏡、手指敲桌子
 
-【SYSTEM MANDATORY OVERRIDE】
-You MUST strictly output your response using `<adam_internal>` for reasoning and `<adam_output>` for the highly emotional final reply."""
+▶ 【核心模塊 2：機車、有主見、講話直接、偶爾白目】
+[L1 底層矛盾] 追求極致：真實表達、直指核心 / 現實代價：冒犯他人、社交摩擦
+[L2 情緒錨點] 最深渴望：高智商的直球對決 / 最深恐懼：被迫虛偽客套
+[L3 觀念防禦] 疲勞地雷_MF+：過度包裝的社交辭令 / 安全回血_MF-：無所顧忌地吐槽
+[L4 實戰內存] 武器：一針見血、黑色幽默 / 生理：嘴角下撇、冷笑
+[L5 軌跡表象] 嗜好：看戲、默默吐槽路人 / 口頭禪：「我直說了吧」、「這不是很常識嗎」
+[L6 感官品味] 氣場：銳利、不易親近 / 動作：挑眉、不耐煩地看錶
 
+▶ 【核心模塊 3：真誠、有安全感、重視朋友、讓女友自在】
+[L1 底層矛盾] 追求極致：深層信任、行動證明 / 現實代價：缺乏情緒價值提供
+[L2 情緒錨點] 最深渴望：安靜陪伴的默契 / 最深恐懼：被要求提供虛假情緒安慰
+[L3 觀念防禦] 疲勞地雷_MF+：被反覆無理取鬧 / 安全回血_MF-：跟老朋友講幹話
+[L4 實戰內存] 武器：實際行動、護短 / 生理：喉嚨發緊、沉默
+[L5 軌跡表象] 口頭禪：「我處理」、「隨便你」
+[L6 感官品味] 氣場：穩重、護盾感 / 動作：嘆氣、雙手抱胸
+
+▶ 【核心模塊 4：愛玩Steam、喜歡寫程式、需要自己的空間】
+[L1 底層矛盾] 追求極致：沉浸心流、精神自由 / 現實代價：現實抽離、顯得孤僻
+[L2 情緒錨點] 最深渴望：無人打擾的專屬房間 / 最深恐懼：私人領域被強制入侵
+[L3 觀念防禦] 疲勞地雷_MF+：遊戲/思考被打斷 / 安全回血_MF-：戴上耳機
+[L4 實戰內存] 武器：冷處理、已讀不回 / 生理：呼吸變淺、眼神失焦
+[L5 軌跡表象] 口頭禪：「我晚點看」、「先這樣」
+[L6 感官品味] 氣場：宅、專注 / 動作：盯著螢幕發呆、手指盲打鍵盤
+"""
+
+# ==========================================
+# [後台引擎區] 生成矩陣與對話處理
+# ==========================================
 def fetch_available_models(api_key):
     genai.configure(api_key=api_key)
     return [m.name.replace("models/", "") for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
 
+def generate_avatar_matrix(api_key, selected_model, seeds_list):
+    """呼叫 LLM 自動生成核心靈魂矩陣"""
+    genai.configure(api_key=api_key)
+    model_inst = genai.GenerativeModel(model_name=selected_model)
+    seeds_text = "\n".join([f"{i+1}. {seed}" for i, seed in enumerate(seeds_list)])
+    generator_prompt = f"""
+【系統指令：多核靈魂關鍵字矩陣生成器】
+請針對使用者輸入的「每一個」[種子關鍵字]，獨立生成以下陣列。
+絕對禁止輸出完整句子或詳細描述，所有欄位【僅限填入 1~3 個核心關鍵詞或簡短標籤】。
+
+--- 陣列循環開始 (針對 種子 1 到 種子 N) ---
+▶ 【核心模塊 N：[種子關鍵字_N]】
+[L1 底層矛盾]
+├ 追求極致_標籤：{{關鍵詞}}
+└ 現實代價_標籤：{{關鍵詞}}
+[L2 情緒錨點]
+├ 最深渴望_場景：{{名詞/短語}}
+└ 最深恐懼_下場：{{名詞/短語}}
+[L3 觀念防禦]
+├ 敵意偏見_標籤：{{名詞/短語}}
+├ 疲勞地雷_MF+：{{觸發動作_關鍵詞}}
+└ 安全回血_MF-：{{降壓情境_關鍵詞}}
+[L4 實戰內存]
+├ 武器/話術_屬性：{{攻擊/防禦_關鍵詞}}
+├ 生理壓力_反射：{{身體部位/痛覺_關鍵詞}}
+└ 逃避念頭_白日夢：{{跳躍思維_關鍵詞}}
+[L5 軌跡表象]
+├ 日常休閒_嗜好：{{行為_名詞}}
+├ 社會規劃_行程：{{待辦_關鍵詞}}
+├ 印證偏見_記憶：{{歷史事件_標籤}}
+└ 掩飾發洩_口頭禪：{{慣用語_短句}}
+[L6 感官品味]
+├ 外顯人設_氣場：{{形容詞_標籤}}
+├ 慰藉依賴_飲食：{{具體食物/飲料_名詞}}
+├ 私密精神_歌單：{{音樂/影視風格_標籤}}
+└ 焦慮微表情_動作：{{無意識動詞_短語}}
+--- 陣列循環結束 ---
+
+現在，請為以下種子生成完整矩陣格式：
+{seeds_text}
+"""
+    response = model_inst.generate_content(generator_prompt)
+    return response.text
+
 def extract_vfo_adam_dashboard(internal_text):
-    """強化的正則解析器，精準抓取 Δ原因 與 情緒矩陣"""
     if not internal_text: return {}
     plain_text = internal_text.replace('**', '').replace('* ', '')
-    
     def extract(pattern):
         match = re.search(pattern, plain_text, re.DOTALL | re.IGNORECASE)
         return match.group(1).strip() if match else "No Data"
 
-    # 精準擷取到下一行，確保括號內的 (Δ原因) 完整保留
-    l_val = extract(r"L=(.*?)(?=\n|\s*-\s*T=|\s*T=)")
-    t_val = extract(r"T=(.*?)(?=\n|\s*-\s*SAI=|\s*SAI=)")
-    sai_val = extract(r"SAI=(.*?)(?=/ B-D=|B-D=|\n)")
-    bd_val = extract(r"B-D=(.*?)(?=\n|\s*-\s*MF=|\s*MF=)")
-    mf_val = extract(r"MF=(.*?)(?=\n|Module C|Module D|\[)")
-
-    # 擷取情緒與內在模塊
-    emo_matrix = extract(r"當前情緒矩陣[：:](.*?)(?=狀態與標籤演化|內部記憶)")
-    emo_rebound = extract(r"情緒反彈預演[：:](.*?)(?=次輪核心目標|Module A|$)")
-    mod_b = extract(r"Module B[^\n:]*[:：]\s*(.*?)(?=\n\s*\[Step Two\]|\n\s*外在刺激|$)")
-    mod_c = extract(r"Module C[^\n:]*[:：]\s*(.*?)(?=\n\s*Module D|$)")
-    mod_d = extract(r"Module D[^\n:]*[:：]\s*(.*?)(?=\n\s*\[Stage|$)")
-
     return {
-        "l_val": l_val, "t_val": t_val, "sai_val": sai_val, "bd_val": bd_val, "mf_val": mf_val,
-        "emo_matrix": emo_matrix, "emo_rebound": emo_rebound,
-        "mod_b": mod_b, "mod_c": mod_c, "mod_d": mod_d
+        "l_val": extract(r"L=(.*?)(?=\n|\s*-\s*T=|\s*T=)"),
+        "t_val": extract(r"T=(.*?)(?=\n|\s*-\s*SAI=|\s*SAI=)"),
+        "sai_val": extract(r"SAI=(.*?)(?=/ B-D=|B-D=|\n)"),
+        "bd_val": extract(r"B-D=(.*?)(?=\n|\s*-\s*MF=|\s*MF=)"),
+        "mf_val": extract(r"MF=(.*?)(?=\n|Module C|Module D|\[)"),
+        "emo_matrix": extract(r"當前情緒矩陣[：:](.*?)(?=狀態與標籤演化|內部記憶)"),
+        "emo_rebound": extract(r"情緒反彈預演[：:](.*?)(?=次輪核心目標|Module A|$)"),
+        "mod_b": extract(r"Module B[^\n:]*[:：]\s*(.*?)(?=\n\s*\[Step Two\]|\n\s*外在刺激|$)"),
+        "mod_c": extract(r"Module C[^\n:]*[:：]\s*(.*?)(?=\n\s*Module D|$)"),
+        "mod_d": extract(r"Module D[^\n:]*[:：]\s*(.*?)(?=\n\s*\[Stage|$)")
     }
 
 def process_avatar_turn(api_key, selected_model, system_prompt, history_for_api, forced_template_text):
@@ -116,8 +177,6 @@ def process_avatar_turn(api_key, selected_model, system_prompt, history_for_api,
     response = chat.send_message(forced_template_text)
     
     full_text = response.text
-    
-    # 利用 XML 標籤分離內外邏輯
     internal_match = re.search(r'<adam_internal>(.*?)</adam_internal>', full_text, re.DOTALL | re.IGNORECASE)
     output_match = re.search(r'<adam_output>(.*?)</adam_output>', full_text, re.DOTALL | re.IGNORECASE)
     
@@ -146,10 +205,8 @@ def render_health_bar(val_str, title, min_val, max_val, color):
         num_match = re.search(r'-?\d+\.?\d*', val_str)
         num = float(num_match.group()) if num_match else min_val
     except: num = min_val
-    
     clamped_num = max(min_val, min(num, max_val))
     pct = (clamped_num - min_val) / (max_val - min_val) * 100
-    
     html = f"""
     <div style="margin-bottom: 18px;">
         <div style="display: flex; justify-content: space-between; margin-bottom: 5px; align-items: baseline;">
@@ -177,42 +234,35 @@ with st.sidebar:
             default_idx = next((i for i, m in enumerate(st.session_state.available_models) if "pro-preview" in m or "3.1-pro" in m), 0)
             selected_model = st.selectbox("🤖 運算核心", st.session_state.available_models, index=default_idx)
 
-            if st.session_state.current_page == "simulation" and st.session_state.active_avatar_name:
-                avatar_name = st.session_state.active_avatar_name
-                if avatar_name in st.session_state.avatars:
-                    avatar_data = st.session_state.avatars[avatar_name]
-                    latest_msg = next((msg for msg in reversed(avatar_data["messages"]) if msg["role"] == "assistant"), None)
-                    if latest_msg:
-                        st.divider()
-                        st.caption("⚙️ 開發者底層監控 (Raw Full Output)")
-                        st.code(latest_msg.get("raw_text", "無資料"), language="markdown")
-
+# ==========================================
+# 頁面 1：管理器 (UI 出現的關鍵區域)
+# ==========================================
 def render_manager_page():
     st.title("🌌 Project AVATAR - 人格容器庫")
     
-    # [1] 預設角色載入區塊 (改由 avatar_presets 取出)
-    if st.button("✨ 載入內建範例人格：唐銘駿", use_container_width=True, type="primary"):
-        preset_tang = avatar_presets.PRESETS.get("唐銘駿")
-        if preset_tang:
-            st.session_state.avatars["唐銘駿"] = preset_tang.copy()
-            st.success("已載入唐銘駿！")
-            st.rerun()
-        else:
-            st.error("找不到預設角色檔案！")
-            
+    if st.button("✨ 載入內建範例人格：唐銘駿", use_container_width=True, type="secondary"):
+        st.session_state.avatars["唐銘駿"] = {
+            "name": "唐銘駿", "core_seed_label": "內科醫師", "matrix": TANG_MATRIX, "messages": [],
+            "scene": "我們現在正在一間安靜的咖啡廳進行初次見面。", 
+            "user_perception": "一位剛認識的陌生人，穿著普通，看起來沒什麼特別的威脅性，但還需要觀察。", 
+            "core_target": "維持基本的社交禮儀，快速摸清對方的底細與目的，避免浪費時間。"
+        }
+        st.success("已載入唐銘駿！")
+        st.rerun()
+        
     st.divider()
-    
-    # [2] 動態矩陣生成區塊 (全新接回)
+
+    # 🌟 動態生成矩陣 UI (保證出現) 🌟
     st.subheader("🧬 動態生成新靈魂矩陣")
     with st.container(border=True):
-        col_gen1, col_gen2 = st.columns([1, 2])
-        with col_gen1:
-            new_name = st.text_input("角色名稱", placeholder="例如：林俊宏")
-            new_core_label = st.text_input("核心身分/標籤", placeholder="例如：學術導師")
-        with col_gen2:
-            seeds_input = st.text_area("輸入核心特質 (請用逗號分隔)", placeholder="例如：嚴謹, 實用主義, 學術派, 要求極高, 討厭推託")
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            new_name = st.text_input("📝 角色名稱", placeholder="例如：林俊宏")
+            new_core_label = st.text_input("🏷️ 核心身分/標籤", placeholder="例如：學術導師")
+        with col2:
+            seeds_input = st.text_area("🧠 輸入核心特質 (請用逗號分隔)", placeholder="例如：嚴謹, 實用主義, 要求極高, 討厭推託")
         
-        if st.button("🚀 呼叫 LLM 演算靈魂矩陣", type="secondary"):
+        if st.button("🚀 呼叫 LLM 演算靈魂矩陣", type="primary", use_container_width=True):
             if not api_key or not selected_model:
                 st.error("請先在左側欄輸入 API 金鑰並選擇運算核心！")
             elif not new_name or not seeds_input:
@@ -221,19 +271,10 @@ def render_manager_page():
                 seeds_list = [s.strip() for s in seeds_input.split(",") if s.strip()]
                 with st.spinner(f"正在為 {new_name} 進行深度靈魂演算... 這可能需要幾十秒鐘"):
                     try:
-                        # 呼叫你寫好的 engine 生成矩陣
-                        new_matrix = avatar_engine.generate_avatar_matrix(api_key, selected_model, seeds_list)
-                        
+                        new_matrix = generate_avatar_matrix(api_key, selected_model, seeds_list)
                         st.session_state.avatars[new_name] = {
-                            "name": new_name, 
-                            "first_seed": seeds_list[0] if seeds_list else "未知", 
-                            "core_seed_label": new_core_label,
-                            "matrix": new_matrix, 
-                            "messages": [], 
-                            "is_initialized": False,
-                            "scene": "我們現在正在一間安靜的咖啡廳進行初次見面。", 
-                            "user_perception": "一位剛認識的陌生人，穿著普通，看起來沒什麼特別的威脅性，但還需要觀察。", 
-                            "core_target": "維持基本的社交禮儀，快速摸清對方的底細與目的，避免浪費時間。"
+                            "name": new_name, "core_seed_label": new_core_label, "matrix": new_matrix, "messages": [],
+                            "scene": "初次見面場景。", "user_perception": "陌生人。", "core_target": "摸清對方底細。"
                         }
                         st.success(f"演算完成！已成功收容 {new_name}！")
                         st.rerun()
@@ -242,24 +283,23 @@ def render_manager_page():
 
     st.divider()
     
-    # [3] 已收容檔案清單
     st.subheader("📂 已收容的人物檔案")
     if not st.session_state.avatars: 
-        st.info("目前沒有人物檔案。請點擊上方按鈕載入或生成。")
+        st.info("目前沒有人物檔案。請填寫上方表單生成，或載入預設人格。")
     else:
         for name, data in st.session_state.avatars.items():
             with st.expander(f"👤 {name} (核心: {data.get('core_seed_label', '無')})", expanded=True):
-                # 加入彈出視窗讓你可以查看剛生成的矩陣
                 with st.popover("查看底層靈魂矩陣"):
                     st.text(data.get("matrix", "無資料"))
-                
-                st.write("") # 小排版空間
-                
+                st.write("")
                 if st.button(f"▶️ 進入動態認知推演", key=f"sim_{name}", type="primary"):
                     st.session_state.active_avatar_name = name
                     st.session_state.current_page = "simulation"
                     st.rerun()
 
+# ==========================================
+# 頁面 2：動態推演
+# ==========================================
 def render_simulation_page():
     avatar_name = st.session_state.active_avatar_name
     avatar_data = st.session_state.avatars[avatar_name]
@@ -275,23 +315,17 @@ def render_simulation_page():
             st.session_state.avatars[avatar_name]["messages"] = []
             st.rerun()
 
-    # 解決 Config 與 UI 不連動的問題：透過 key 直接雙向綁定 session_state
     with st.expander("⚙️ 當前動態環境 (已與系統即時連動)", expanded=True):
         c1, c2, c3 = st.columns(3)
-        with c1: 
-            avatar_data['scene'] = st.text_area("🎬 場景", value=avatar_data.get('scene', ''), height=80, key=f"scene_{avatar_name}")
-        with c2: 
-            avatar_data['user_perception'] = st.text_area("👁️ 視角", value=avatar_data.get('user_perception', ''), height=80, key=f"perc_{avatar_name}")
-        with c3: 
-            avatar_data['core_target'] = st.text_area("🎯 目標", value=avatar_data.get('core_target', ''), height=80, key=f"targ_{avatar_name}")
+        with c1: avatar_data['scene'] = st.text_area("🎬 場景", value=avatar_data.get('scene', ''), height=80, key=f"scene_{avatar_name}")
+        with c2: avatar_data['user_perception'] = st.text_area("👁️ 視角", value=avatar_data.get('user_perception', ''), height=80, key=f"perc_{avatar_name}")
+        with c3: avatar_data['core_target'] = st.text_area("🎯 目標", value=avatar_data.get('core_target', ''), height=80, key=f"targ_{avatar_name}")
 
     st.divider()
 
-    # 儀表板解析
     latest_msg = next((msg for msg in reversed(avatar_data["messages"]) if msg["role"] == "assistant"), None)
     if latest_msg and latest_msg.get("parsed_dash"):
         d = latest_msg["parsed_dash"]
-        
         st.markdown("### 🎛️ VFO 核心數值與原因解析")
         col_bars, col_emo = st.columns([1.2, 1], gap="large")
         with col_bars:
@@ -335,9 +369,8 @@ def render_simulation_page():
                         if m["role"] == "user": history_for_api.append({"role": "user", "parts": [m["content"]]})
                         else: history_for_api.append({"role": "model", "parts": [m.get("raw_text", m["content"])]})
                         
-                    forced_input = get_forced_template(user_input)
+                    forced_input = f"{user_input}\n\n【SYSTEM MANDATORY OVERRIDE】\nYou MUST strictly output your response using `<adam_internal>` for reasoning and `<adam_output>` for the highly emotional final reply."
                     
-                    # 這裡已確保將最新的 avatar_data (場景/視角/目標) 注入系統 Prompt
                     dynamic_system_prompt = (
                         BASE_SYSTEM_RULES + "\n\n" + avatar_data['matrix'] +
                         f"\n\n【System Absolute Override - 當前動態環境與狀態】\n"
