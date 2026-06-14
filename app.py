@@ -191,7 +191,7 @@ def process_avatar_turn(api_key, selected_model, system_prompt, history_for_api,
     }
 
 # ==========================================
-# [UI 視圖與路由]
+# [UI 視圖與佈局]
 # ==========================================
 st.set_page_config(page_title="AVATAR 認知終端 (VFO-Adam)", layout="wide", initial_sidebar_state="expanded")
 
@@ -234,8 +234,19 @@ with st.sidebar:
             default_idx = next((i for i, m in enumerate(st.session_state.available_models) if "pro-preview" in m or "3.1-pro" in m), 0)
             selected_model = st.selectbox("🤖 運算核心", st.session_state.available_models, index=default_idx)
 
+        # ▼▼▼ 這裡新增導航按鈕 ▼▼▼
+        st.divider()
+        st.markdown("### 🗺️ 系統模式切換")
+        if st.button("📂 人格容器庫 (管理首頁)", use_container_width=True):
+            st.session_state.current_page = "manager"
+            st.rerun()
+            
+        if st.button("⚔️ 雙人交鋒 (Multi-Agent)", use_container_width=True, type="primary"):
+            st.session_state.current_page = "multi_agent"
+            st.rerun()
+
 # ==========================================
-# 頁面 1：管理器 (UI 出現的關鍵區域)
+# 頁面 1：管理器
 # ==========================================
 def render_manager_page():
     st.title("🌌 Project AVATAR - 人格容器庫")
@@ -252,7 +263,6 @@ def render_manager_page():
         
     st.divider()
 
-    # 🌟 動態生成矩陣 UI (保證出現) 🌟
     st.subheader("🧬 動態生成新靈魂矩陣")
     with st.container(border=True):
         col1, col2 = st.columns([1, 2])
@@ -298,7 +308,7 @@ def render_manager_page():
                     st.rerun()
 
 # ==========================================
-# 頁面 2：動態推演
+# 頁面 2：動態推演 (單人)
 # ==========================================
 def render_simulation_page():
     avatar_name = st.session_state.active_avatar_name
@@ -391,9 +401,25 @@ def render_simulation_page():
                     st.rerun() 
                 except Exception as e: st.error(f"運算中斷：{str(e)}")
 
-if st.session_state.current_page == "manager": render_manager_page()
+# ==========================================
+# [主路由控制] 決定當前顯示哪個頁面
+# ==========================================
+if st.session_state.current_page == "manager": 
+    render_manager_page()
+
 elif st.session_state.current_page == "simulation":
-    if st.session_state.active_avatar_name: render_simulation_page()
+    if st.session_state.active_avatar_name: 
+        render_simulation_page()
     else:
         st.session_state.current_page = "manager"
         st.rerun()
+
+elif st.session_state.current_page == "multi_agent":
+    # 確保有引入並執行 multiagent 邏輯
+    import multiagent
+    multiagent.render_multi_agent_page(
+        api_key=api_key, 
+        selected_model=selected_model, 
+        base_system_rules=BASE_SYSTEM_RULES, 
+        process_avatar_turn_func=process_avatar_turn
+    )
